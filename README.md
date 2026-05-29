@@ -143,7 +143,7 @@ instacart_project/
 | Source Data | Instacart Dataset via Kaggle (3.4M orders, 5 CSVs) |
 | Docs | dbt docs (hosted via GitHub Pages) |
 
-BigQuery was the deliberate choice here — not the tutorial default. The Instacart CSVs load cleanly into BigQuery external tables, and BigQuery's partitioning and clustering options are relevant context for how you'd productionize a model like `fct_orders` at scale (partitioned on `order_dow`, clustered on `user_id`).
+The Instacart CSVs load cleanly into BigQuery external tables, and BigQuery's partitioning and clustering options are relevant context for how you'd productionize a model like `fct_orders` at scale (partitioned on `order_dow`, clustered on `user_id`).
 
 ---
 
