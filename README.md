@@ -1,2 +1,2 @@
-# GA4-project
-Repo for GA4 portfolio project
+# instacart-project
+Repo for instacart portfolio project
