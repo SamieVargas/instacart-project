@@ -1,0 +1,14 @@
+# ============================================================
+# packages.yml
+# External dbt packages this project depends on
+#
+# dbt_utils: adds extra test types like accepted_range
+# that are not built into dbt core by default
+#
+# After adding this file run: dbt deps
+# that installs the packages into dbt_packages/
+# ============================================================
+
+packages:
+  - package: dbt-labs/dbt_utils
+    version: 1.3.0

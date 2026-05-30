@@ -1,0 +1,93 @@
+# ============================================================
+# sources.yml
+# Tells dbt where the raw data lives in BigQuery
+# before any transformation happens
+#
+# Instead of hardcoding 'instacart_raw.orders' in every model,
+# models reference {{ source('instacart', 'orders') }} and dbt
+# knows where to find it from this file
+#
+# Why this matters:
+#   - one place to update if a table name ever changes
+#   - dbt can run freshness checks on source data
+#   - lineage graph shows sources as starting nodes in the DAG
+# ============================================================
+
+version: 2
+
+sources:
+  - name: instacart
+    # BigQuery dataset where the raw CSVs were loaded via bq CLI
+    database: instacart-497823
+    schema: instacart_raw
+
+    tables:
+
+      # ------------------------------------------------------------
+      # ORDERS
+      # grain: 1 row per order
+      # key quirks: days_since_prior_order is NULL on first orders
+      # and capped at 30 for any gap of 30+ days (confirmed in qc_01)
+      # ------------------------------------------------------------
+      - name: orders
+        description: >
+          One row per order. Contains order metadata: user, day of week,
+          hour, and days since prior order. days_since_prior_order is NULL
+          on a user's first order and capped at 30 for gaps of 30 or more days.
+
+      # ------------------------------------------------------------
+      # PRODUCTS
+      # grain: 1 row per product
+      # links to aisles and departments via foreign keys
+      # ------------------------------------------------------------
+      - name: products
+        description: >
+          One row per product. Contains product name and foreign keys
+          to aisles and departments.
+
+      # ------------------------------------------------------------
+      # ORDER PRODUCTS PRIOR
+      # grain: 1 row per product per order, prior orders only
+      # this is the history file: 3.2M orders across 206K users
+      # contains the reordered flag used in find_01 reorder analysis
+      # ------------------------------------------------------------
+      - name: order_products_prior
+        description: >
+          One row per product per order for all prior orders.
+          Contains reordered flag and add_to_cart_order.
+          This is the shopping history file — 3.2M orders of behavior
+          across 206K users before their final order.
+
+      # ------------------------------------------------------------
+      # ORDER PRODUCTS TRAIN
+      # grain: 1 row per product per order, train set only
+      # same structure as prior but these are final orders
+      # combined with prior using source_label in stg_order_products
+      # ------------------------------------------------------------
+      - name: order_products_train
+        description: >
+          One row per product per order for train set final orders only.
+          Same structure as order_products_prior but represents each
+          user's last order in the dataset. Combined with prior using
+          a source_label column in stg_order_products.
+
+      # ------------------------------------------------------------
+      # AISLES
+      # grain: 1 row per aisle
+      # lookup table only, 134 aisles total
+      # ------------------------------------------------------------
+      - name: aisles
+        description: >
+          One row per aisle. Lookup table with aisle_id and aisle name.
+          134 aisles total.
+
+      # ------------------------------------------------------------
+      # DEPARTMENTS
+      # grain: 1 row per department
+      # lookup table only, 21 departments total
+      # find_01 showed dairy eggs and produce are top reorder depts
+      # ------------------------------------------------------------
+      - name: departments
+        description: >
+          One row per department. Lookup table with department_id and
+          department name. 21 departments total.
