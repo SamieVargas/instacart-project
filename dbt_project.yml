@@ -1,17 +1,34 @@
+# ============================================================
+# dbt_project.yml
+# This is the brain of the dbt project
+# It tells dbt: what the project is called, where to find
+# files, and how to build each layer of models in BigQuery
+# ============================================================
 
-# Name your project! Project names should contain only lowercase characters
-# and underscores. A good package name should reflect your organization's
-# name or the intended use of these models
-name: 'my_new_project'
+
+# ------------------------------------------------------------
+# PROJECT IDENTITY
+# name must be lowercase with underscores, no spaces
+# this needs to match everywhere dbt references the project
+# changed from the default 'my_new_project' to match ours
+# ------------------------------------------------------------
+
+name: 'instacart_project'
 version: '1.0.0'
 config-version: 2
 
-# This setting configures which "profile" dbt uses for this project.
+# profile connects dbt to BigQuery credentials
+# 'default' works in dbt Cloud since the connection is set in the UI
 profile: 'default'
 
-# These configurations specify where dbt should look for different types of files.
-# The `model-paths` config, for example, states that models in this project can be
-# found in the "models/" directory. You probably won't need to change these!
+
+# ------------------------------------------------------------
+# FILE PATHS
+# where dbt looks for each type of file
+# these match the folders created when the project initialized
+# leave these alone unless you rename a folder
+# ------------------------------------------------------------
+
 model-paths: ["models"]
 analysis-paths: ["analyses"]
 test-paths: ["tests"]
@@ -19,24 +36,39 @@ seed-paths: ["seeds"]
 macro-paths: ["macros"]
 snapshot-paths: ["snapshots"]
 
-target-path: "target"  # directory which will store compiled SQL files
-clean-targets:         # directories to be removed by `dbt clean`
+target-path: "target"
+clean-targets:
   - "target"
   - "dbt_packages"
 
 
-# Configuring models
-# Full documentation: https://docs.getdbt.com/docs/configuring-models
-
-# In dbt, the default materialization for a model is a view. This means, when you run 
-# dbt run or dbt build, all of your models will be built as a view in your data platform. 
-# The configuration below will override this setting for models in the example folder to 
-# instead be materialized as tables. Any models you add to the root of the models folder will 
-# continue to be built as views. These settings can be overridden in the individual model files
-# using the `{{ config(...) }}` macro.
+# ------------------------------------------------------------
+# MODEL MATERIALIZATIONS
+# materialization = how dbt physically builds each model in BigQuery
+#
+# view  = a saved SQL query, no data stored, runs fresh every time
+#         fast to build, good for staging and intermediate layers
+#
+# table = actual data written to BigQuery and stored on disk
+#         slower to build, faster to query, good for marts
+#
+# the pattern here:
+#   staging      = views  (just cleaning and renaming raw data)
+#   intermediate = views  (joining staging models, keeping mart logic clean)
+#   marts        = tables (what analysts actually query, stored for speed)
+#
+# models inherit these settings automatically based on which
+# folder they live in, so no need to configure each file individually
+# ------------------------------------------------------------
 
 models:
-  my_new_project:
-    # Applies to all files under models/example/
-    example:
+  instacart_project:
+
+    staging:
+      +materialized: view
+
+    intermediate:
+      +materialized: view
+
+    marts:
       +materialized: table
