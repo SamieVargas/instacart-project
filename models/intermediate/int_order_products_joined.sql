@@ -17,45 +17,86 @@
 --   - if a department name ever changes, fix it here only
 --
 -- Note on structure:
---   written as a single SELECT rather than chained CTEs
---   due to a dbt Fusion preview engine bug with CTE column
---   resolution on UNION ALL views — functionally identical
+--   written without table aliases due to a dbt Fusion
+--   alias resolution bug with ref() models in joins
+--   functionally identical to aliased version
 -- ============================================================
 
 {{ config(materialized='table') }}
 
+with order_products as (
+
+    SELECT
+        order_id,
+        product_id,
+        add_to_cart_order,
+        reordered,
+        source_label
+    FROM
+        {{ ref('stg_order_products') }}
+
+),
+
+products as (
+
+    SELECT
+        product_id,
+        product_name,
+        aisle_id,
+        department_id
+    FROM
+        {{ ref('stg_products') }}
+
+),
+
+aisles as (
+
+    SELECT
+        aisle_id,
+        aisle
+    FROM
+        {{ ref('stg_aisles') }}
+
+),
+
+departments as (
+
+    SELECT
+        department_id,
+        department
+    FROM
+        {{ ref('stg_departments') }}
+
+),
+
+joined as (
+
+    SELECT
+        order_products.order_id,
+        order_products.product_id,
+        products.product_name,
+        aisles.aisle_id,
+        aisles.aisle,
+        departments.department_id,
+        departments.department,
+        order_products.add_to_cart_order,
+        order_products.reordered,
+        order_products.source_label
+    FROM
+        order_products
+    INNER JOIN
+        products
+        ON order_products.product_id = products.product_id
+    INNER JOIN
+        aisles
+        ON products.aisle_id = aisles.aisle_id
+    INNER JOIN
+        departments
+        ON products.department_id = departments.department_id
+
+)
+
 SELECT
-
-    -- keys
-    op.order_id,
-    op.product_id,
-
-    -- product details
-    p.product_name,
-
-    -- aisle details
-    -- find_02 will use aisle for granular reorder analysis
-    a.aisle_id,
-    a.aisle,
-
-    -- department details
-    -- find_01 confirmed dairy eggs + produce top reorder depts
-    d.department_id,
-    d.department,
-
-    -- order behavior
-    op.add_to_cart_order,
-    op.reordered,
-    op.source_label
-
+    *
 FROM
-    {{ ref('stg_order_products') }} AS op
-JOIN
-    {{ ref('stg_products') }} AS p
-    ON op.product_id = p.product_id
-JOIN
-    {{ ref('stg_aisles') }} AS a
-    ON p.aisle_id = a.aisle_id
-JOIN
-    {{ ref('stg_departments') }} AS d
-    ON p.department_id = d.department_id
+    joined
