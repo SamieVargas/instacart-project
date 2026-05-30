@@ -16,112 +16,46 @@
 --   - one model, one test, two consumers
 --   - if a department name ever changes, fix it here only
 --
--- What this model does NOT do:
---   - no aggregations yet (that happens in the marts)
---   - no filtering by eval_set or source_label
---     downstream models decide what to filter
+-- Note on structure:
+--   written as a single SELECT rather than chained CTEs
+--   due to a dbt Fusion preview engine bug with CTE column
+--   resolution on UNION ALL views — functionally identical
 -- ============================================================
 
-with order_products as (
-
-    -- pulling from staging, not raw
-    -- stg_order_products already combined prior + train
-    -- and added source_label for downstream filtering
-    -- explicit aliases force BigQuery to resolve column names
-    -- correctly from the UNION ALL view underneath
-    SELECT
-        order_id        AS order_id,
-        product_id      AS product_id,
-        add_to_cart_order AS add_to_cart_order,
-        reordered       AS reordered,
-        source_label    AS source_label
-    FROM
-        {{ ref('stg_order_products') }}
-
-),
-
-products as (
-
-    SELECT
-        product_id      AS product_id,
-        product_name    AS product_name,
-        aisle_id        AS aisle_id,
-        department_id   AS department_id
-    FROM
-        {{ ref('stg_products') }}
-
-),
-
-aisles as (
-
-    SELECT
-        aisle_id        AS aisle_id,
-        aisle           AS aisle
-    FROM
-        {{ ref('stg_aisles') }}
-
-),
-
-departments as (
-
-    SELECT
-        department_id   AS department_id,
-        department      AS department
-    FROM
-        {{ ref('stg_departments') }}
-
-),
-
--- ------------------------------------------------------------
--- JOIN EVERYTHING TOGETHER
--- order_products is the base (left side)
--- products, aisles, departments are all lookup enrichment
--- all joins are inner: every product_id should have a match
--- if a join fails here it means a referential integrity issue
--- in the raw data worth flagging
--- ------------------------------------------------------------
-
-joined as (
-
-    SELECT
-
-        -- keys
-        order_products.order_id,
-        order_products.product_id,
-
-        -- product details
-        products.product_name,
-
-        -- aisle details
-        -- find_02 will use aisle for granular reorder analysis
-        aisles.aisle_id,
-        aisles.aisle,
-
-        -- department details
-        -- find_01 confirmed dairy eggs + produce top reorder depts
-        departments.department_id,
-        departments.department,
-
-        -- order behavior
-        order_products.add_to_cart_order,
-        order_products.reordered,
-        order_products.source_label
-
-    FROM
-        order_products
-    JOIN
-        products
-        ON order_products.product_id = products.product_id
-    JOIN
-        aisles
-        ON products.aisle_id = aisles.aisle_id
-    JOIN
-        departments
-        ON products.department_id = departments.department_id
-
-)
+{{ config(materialized='table') }}
 
 SELECT
-    *
+
+    -- keys
+    op.order_id,
+    op.product_id,
+
+    -- product details
+    p.product_name,
+
+    -- aisle details
+    -- find_02 will use aisle for granular reorder analysis
+    a.aisle_id,
+    a.aisle,
+
+    -- department details
+    -- find_01 confirmed dairy eggs + produce top reorder depts
+    d.department_id,
+    d.department,
+
+    -- order behavior
+    op.add_to_cart_order,
+    op.reordered,
+    op.source_label
+
 FROM
-    joined
+    {{ ref('stg_order_products') }} AS op
+JOIN
+    {{ ref('stg_products') }} AS p
+    ON op.product_id = p.product_id
+JOIN
+    {{ ref('stg_aisles') }} AS a
+    ON p.aisle_id = a.aisle_id
+JOIN
+    {{ ref('stg_departments') }} AS d
+    ON p.department_id = d.department_id
