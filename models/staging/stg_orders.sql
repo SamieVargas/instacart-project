@@ -1,3 +1,4 @@
+{{ config(materialized='table') }}
 -- ============================================================
 -- stg_orders.sql
 -- Staging model for the orders raw table

@@ -27,12 +27,14 @@ with order_products as (
     -- pulling from staging, not raw
     -- stg_order_products already combined prior + train
     -- and added source_label for downstream filtering
+    -- explicit aliases force BigQuery to resolve column names
+    -- correctly from the UNION ALL view underneath
     SELECT
-        order_id,
-        product_id,
-        add_to_cart_order,
-        reordered,
-        source_label
+        order_id        AS order_id,
+        product_id      AS product_id,
+        add_to_cart_order AS add_to_cart_order,
+        reordered       AS reordered,
+        source_label    AS source_label
     FROM
         {{ ref('stg_order_products') }}
 
@@ -41,10 +43,10 @@ with order_products as (
 products as (
 
     SELECT
-        product_id,
-        product_name,
-        aisle_id,
-        department_id
+        product_id      AS product_id,
+        product_name    AS product_name,
+        aisle_id        AS aisle_id,
+        department_id   AS department_id
     FROM
         {{ ref('stg_products') }}
 
@@ -53,8 +55,8 @@ products as (
 aisles as (
 
     SELECT
-        aisle_id,
-        aisle
+        aisle_id        AS aisle_id,
+        aisle           AS aisle
     FROM
         {{ ref('stg_aisles') }}
 
@@ -63,8 +65,8 @@ aisles as (
 departments as (
 
     SELECT
-        department_id,
-        department
+        department_id   AS department_id,
+        department      AS department
     FROM
         {{ ref('stg_departments') }}
 
