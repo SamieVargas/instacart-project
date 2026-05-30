@@ -1,0 +1,277 @@
+# ============================================================
+# schema.yml
+# Documentation and tests for the mart layer
+#
+# Two things this file does:
+#   1. documents every column so analysts know what they are
+#      looking at without reading the SQL
+#   2. encodes business logic as tests so dbt fails loudly
+#      if the data violates an assumption we proved in exploration
+#
+# The interesting tests are not not_null and unique
+# Those are table stakes
+# The interesting ones reference findings from the exploration phase
+# ============================================================
+
+version: 2
+
+models:
+
+  # ------------------------------------------------------------
+  # FCT_ORDERS
+  # grain: 1 row per order
+  # ------------------------------------------------------------
+  - name: fct_orders
+    description: >
+      Order-level fact table. One row per order across all eval sets.
+      Contains order metadata, time dimensions, and aggregated
+      product metrics including order size and reorder ratio.
+      Note: order_size, reordered_items, and reorder_ratio are NULL
+      for test set orders (75,000 rows) because test orders have no
+      product labels. This is expected behavior from the LEFT JOIN.
+      Source: stg_orders joined to int_order_products_joined.
+
+    columns:
+
+      - name: order_id
+        description: Unique identifier for each order.
+        tests:
+          - unique
+          - not_null
+
+      - name: user_id
+        description: Identifier for the user who placed the order.
+        tests:
+          - not_null
+
+      - name: eval_set
+        description: >
+          Which group this order belongs to: prior (shopping history),
+          train (labeled final order), or test (unlabeled final order).
+          Confirmed in disc_02: train and test each have exactly 1 order
+          per user. prior averages 15.6 orders per user.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['prior', 'train', 'test']
+
+      - name: order_number
+        description: >
+          Sequence number of this order for the user.
+          order_number = 1 is always the user's first order.
+        tests:
+          - not_null
+
+      - name: order_dow
+        description: >
+          Day of week the order was placed. 0 = Sunday, 6 = Saturday.
+          Stored as INTEGER in BigQuery.
+        tests:
+          - not_null
+
+      - name: order_hour_of_day
+        description: Hour of day the order was placed. 0-23.
+        tests:
+          - not_null
+
+      - name: days_since_prior_order
+        description: >
+          Days between this order and the user's previous order.
+          NULL on order_number = 1 — confirmed clean in qc_02:
+          100% null on first orders, 0% null on all subsequent orders.
+          Capped at 30 by Instacart — confirmed in qc_01: spike of
+          369K orders at 30 vs ~20K neighbors. A value of 30 means
+          30 or more days, not exactly 30.
+        tests:
+          - not_null:
+              where: "order_number > 1"
+
+      - name: is_days_since_prior_capped
+        description: >
+          TRUE when days_since_prior_order = 30, indicating the value
+          is censored and represents 30 or more days.
+          Use this flag to exclude or handle capped values in
+          time-decay analysis.
+        tests:
+          - not_null
+
+      - name: order_size
+        description: >
+          Total number of products in this order.
+          NULL for test set orders (eval_set = 'test') because
+          test orders have no product labels in the source data.
+        tests:
+          - not_null:
+              where: "eval_set != 'test'"
+
+      - name: reordered_items
+        description: >
+          Number of products in this order that were reorders.
+          NULL for test set orders — same reason as order_size.
+        tests:
+          - not_null:
+              where: "eval_set != 'test'"
+
+      - name: reorder_ratio
+        description: >
+          Proportion of items in this order that were reorders.
+          0.0 = all new items. 1.0 = all reorders.
+          NULL for test set orders — same reason as order_size.
+          find_01 confirmed dairy eggs and produce drive high reorder
+          rates at the department level. This column surfaces the same
+          signal at the order level.
+          A value above 1.0 would indicate a join fanout upstream.
+        tests:
+          - not_null:
+              where: "eval_set != 'test'"
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 1
+              where: "eval_set != 'test'"
+
+
+  # ------------------------------------------------------------
+  # DIM_PRODUCTS
+  # grain: 1 row per product
+  # ------------------------------------------------------------
+  - name: dim_products
+    description: >
+      Product dimension table. One row per product.
+      Contains the full product catalog enriched with aisle and
+      department names, plus reorder behavior aggregated from
+      all prior orders. 49,677 products total.
+      Source: int_order_products_joined filtered to prior orders.
+
+    columns:
+
+      - name: product_id
+        description: Unique identifier for each product.
+        tests:
+          - unique
+          - not_null
+
+      - name: product_name
+        description: Full product name as provided by Instacart.
+        tests:
+          - not_null
+
+      - name: aisle_id
+        description: Foreign key to the aisle this product belongs to.
+        tests:
+          - not_null
+
+      - name: aisle
+        description: Aisle name. 134 aisles total in the dataset.
+        tests:
+          - not_null
+
+      - name: department_id
+        description: Foreign key to the department this product belongs to.
+        tests:
+          - not_null
+
+      - name: department
+        description: >
+          Department name. 21 departments total.
+          find_01 finding: dairy eggs (0.67), beverages (0.653),
+          and produce (0.65) are the top 3 reorder departments.
+        tests:
+          - not_null
+
+      - name: total_orders
+        description: >
+          Total number of times this product appeared in a prior order.
+          Based on prior orders only — train set excluded.
+        tests:
+          - not_null
+
+      - name: total_reorders
+        description: >
+          Number of times this product was a reorder (not a first purchase).
+        tests:
+          - not_null
+
+      - name: reorder_rate
+        description: >
+          Proportion of all orders for this product that were reorders.
+          High reorder_rate = habitual staple purchase.
+          Low reorder_rate = discovery or impulse purchase.
+          Ranges from 0.0 to 1.0.
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 1
+
+
+  # ------------------------------------------------------------
+  # DIM_USERS
+  # grain: 1 row per user
+  # ------------------------------------------------------------
+  - name: dim_users
+    description: >
+      User dimension table. One row per user.
+      Aggregates order and product behavior from fct_orders
+      to the user level. 206,209 users total.
+      Source: fct_orders aggregated by user_id.
+
+    columns:
+
+      - name: user_id
+        description: Unique identifier for each user.
+        tests:
+          - unique
+          - not_null
+
+      - name: total_prior_orders
+        description: >
+          Total number of prior orders placed by this user.
+          Excludes train and test orders.
+          disc_02 confirmed: prior averages 15.6 orders per user.
+        tests:
+          - not_null
+
+      - name: max_order_number
+        description: >
+          Highest order sequence number for this user across all eval sets.
+          Includes prior + train/test final order.
+        tests:
+          - not_null
+
+      - name: avg_order_size
+        description: >
+          Average number of items per order for this user,
+          calculated across prior orders only.
+        tests:
+          - not_null
+
+      - name: avg_reorder_ratio
+        description: >
+          Average reorder ratio across all prior orders for this user.
+          0.0 = user consistently buys new items (explorer).
+          1.0 = user consistently reorders the same items (habitual).
+          User-level version of the find_01 department finding.
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 1
+
+      - name: has_capped_order
+        description: >
+          1 if any of this user's orders has days_since_prior_order = 30,
+          meaning at least one gap between orders was 30 or more days.
+          Useful for flagging users whose order frequency analysis
+          may be affected by the qc_01 cap finding.
+          Values: 0 or 1 (stored as INTEGER in BigQuery).
+        tests:
+          - not_null
+
+      - name: is_train_user
+        description: >
+          TRUE if this user has an order in the train eval_set,
+          meaning their final order is labeled with product data.
+          disc_02 confirmed: 131,209 train users, exactly 1 final
+          order each. Use this to filter to users with labeled outcomes.
+        tests:
+          - not_null
