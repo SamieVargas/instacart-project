@@ -1,0 +1,238 @@
+# ============================================================
+# schema.yml
+# Documentation for the staging layer
+#
+# Staging models do one thing: clean and rename raw source data
+# No joins, no aggregations, no business logic
+# Every assumption about the raw data is documented here
+# so downstream models and analysts don't have to guess
+#
+# Grain and quirks are called out explicitly for every model
+# because the raw Instacart CSVs ship with no documentation
+# ============================================================
+
+version: 2
+
+models:
+
+  # ------------------------------------------------------------
+  # STG_ORDERS
+  # grain: 1 row per order
+  # source: instacart_raw.orders
+  # key quirks:
+  #   - days_since_prior_order is NULL on first orders (intentional)
+  #   - days_since_prior_order is capped at 30 (censored value)
+  #   both confirmed in qc_01 and qc_02 exploration queries
+  # ------------------------------------------------------------
+  - name: stg_orders
+    description: >
+      Cleaned and renamed orders table. One row per order.
+      Source of truth for order metadata including user, timing,
+      and days since prior order. days_since_prior_order has two
+      known quirks documented in column descriptions below.
+
+    columns:
+
+      - name: order_id
+        description: Unique identifier for each order.
+        tests:
+          - unique
+          - not_null
+
+      - name: user_id
+        description: Identifier for the user who placed the order.
+        tests:
+          - not_null
+
+      - name: eval_set
+        description: >
+          ML competition group assignment: prior, train, or test.
+          prior = all historical orders before the final order.
+          train = each user's labeled final order.
+          test = each user's unlabeled final order.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['prior', 'train', 'test']
+
+      - name: order_number
+        description: >
+          Order sequence number per user. Starts at 1.
+          order_number = 1 always has NULL days_since_prior_order.
+        tests:
+          - not_null
+
+      - name: order_dow
+        description: Day of week. 0 = Sunday, 6 = Saturday.
+        tests:
+          - not_null
+
+      - name: order_hour_of_day
+        description: Hour of day the order was placed. Range 0-23.
+        tests:
+          - not_null
+
+      - name: days_since_prior_order
+        description: >
+          Days between this order and the user's previous order.
+          NULL when order_number = 1 — no prior order to measure from.
+          Confirmed clean in qc_02: 100% null on first orders only.
+          Capped at 30 by Instacart — a value of 30 means 30 or more days.
+          Confirmed in qc_01: spike of 369K orders at 30 vs ~20K neighbors.
+          Do not treat 30 as an exact measurement in time-decay analysis.
+        tests:
+          - not_null:
+              where: "order_number > 1"
+
+
+  # ------------------------------------------------------------
+  # STG_PRODUCTS
+  # grain: 1 row per product
+  # source: instacart_raw.products
+  # 49,677 products total
+  # no brand data — Instacart anonymized all brand information
+  # ------------------------------------------------------------
+  - name: stg_products
+    description: >
+      Cleaned products table. One row per product.
+      Contains product name and foreign keys to aisles and departments.
+      No brand-level data — Instacart anonymized this to protect privacy.
+
+    columns:
+
+      - name: product_id
+        description: Unique identifier for each product.
+        tests:
+          - unique
+          - not_null
+
+      - name: product_name
+        description: Full product name as provided by Instacart.
+        tests:
+          - not_null
+
+      - name: aisle_id
+        description: >
+          Foreign key to stg_aisles. Used in int_order_products_joined
+          to enrich products with aisle names.
+        tests:
+          - not_null
+
+      - name: department_id
+        description: >
+          Foreign key to stg_departments. Used in int_order_products_joined
+          to enrich products with department names.
+          find_01: dairy eggs (0.67) and produce (0.65) are top reorder depts.
+        tests:
+          - not_null
+
+
+  # ------------------------------------------------------------
+  # STG_ORDER_PRODUCTS
+  # grain: 1 row per product per order
+  # source: instacart_raw.order_products_prior +
+  #         instacart_raw.order_products_train
+  # combined total: ~33.8M rows
+  # source_label added to preserve which eval_set each row came from
+  # test set excluded: no reordered labels available
+  # ------------------------------------------------------------
+  - name: stg_order_products
+    description: >
+      Combined prior and train order-product records.
+      One row per product per order. Prior and train files unioned
+      with a source_label column so downstream models can filter
+      to history (prior) or final orders (train) without re-joining.
+      Test set excluded — no reordered labels available for analysis.
+
+    columns:
+
+      - name: order_id
+        description: Foreign key to stg_orders.
+        tests:
+          - not_null
+
+      - name: product_id
+        description: Foreign key to stg_products.
+        tests:
+          - not_null
+
+      - name: add_to_cart_order
+        description: >
+          Sequence in which this product was added to the cart.
+          1 = first item added. Useful for basket composition analysis.
+        tests:
+          - not_null
+
+      - name: reordered
+        description: >
+          1 if the user has ordered this product before, 0 if not.
+          This is the key behavioral signal used in find_01 reorder
+          rate analysis and in dim_products reorder_rate calculation.
+        tests:
+          - not_null
+          - accepted_values:
+              values: [0, 1]
+
+      - name: source_label
+        description: >
+          Which source file this row came from: prior or train.
+          Added during the UNION ALL in this staging model.
+          Use this to filter to prior orders only for reorder analysis,
+          or to train orders for final basket analysis.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['prior', 'train']
+
+
+  # ------------------------------------------------------------
+  # STG_AISLES
+  # grain: 1 row per aisle
+  # source: instacart_raw.aisles
+  # 134 aisles total — lookup table only
+  # ------------------------------------------------------------
+  - name: stg_aisles
+    description: >
+      Cleaned aisles lookup table. One row per aisle.
+      134 aisles total. Joined to products in int_order_products_joined.
+
+    columns:
+
+      - name: aisle_id
+        description: Unique identifier for each aisle.
+        tests:
+          - unique
+          - not_null
+
+      - name: aisle
+        description: Aisle name.
+        tests:
+          - not_null
+
+
+  # ------------------------------------------------------------
+  # STG_DEPARTMENTS
+  # grain: 1 row per department
+  # source: instacart_raw.departments
+  # 21 departments total — lookup table only
+  # find_01: dairy eggs 0.67, beverages 0.653, produce 0.65
+  # ------------------------------------------------------------
+  - name: stg_departments
+    description: >
+      Cleaned departments lookup table. One row per department.
+      21 departments total. Joined to products in int_order_products_joined.
+      find_01 confirmed dairy eggs, beverages, and produce are the
+      top three reorder departments across 3.2M prior orders.
+
+    columns:
+
+      - name: department_id
+        description: Unique identifier for each department.
+        tests:
+          - unique
+          - not_null
+
+      - name: department
+        description: Department name.
+        tests:
+          - not_null
