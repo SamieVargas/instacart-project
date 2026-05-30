@@ -1,0 +1,74 @@
+# ============================================================
+# dbt_project.yml
+# This is the brain of the dbt project
+# It tells dbt: what the project is called, where to find
+# files, and how to build each layer of models in BigQuery
+# ============================================================
+
+
+# ------------------------------------------------------------
+# PROJECT IDENTITY
+# name must be lowercase with underscores, no spaces
+# this needs to match everywhere dbt references the project
+# changed from the default 'my_new_project' to match ours
+# ------------------------------------------------------------
+
+name: 'instacart_project'
+version: '1.0.0'
+config-version: 2
+
+# profile connects dbt to BigQuery credentials
+# 'default' works in dbt Cloud since the connection is set in the UI
+profile: 'default'
+
+
+# ------------------------------------------------------------
+# FILE PATHS
+# where dbt looks for each type of file
+# these match the folders created when the project initialized
+# leave these alone unless you rename a folder
+# ------------------------------------------------------------
+
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+
+# ------------------------------------------------------------
+# MODEL MATERIALIZATIONS
+# materialization = how dbt physically builds each model in BigQuery
+#
+# view  = a saved SQL query, no data stored, runs fresh every time
+#         fast to build, good for staging and intermediate layers
+#
+# table = actual data written to BigQuery and stored on disk
+#         slower to build, faster to query, good for marts
+#
+# the pattern here:
+#   staging      = views  (just cleaning and renaming raw data)
+#   intermediate = views  (joining staging models, keeping mart logic clean)
+#   marts        = tables (what analysts actually query, stored for speed)
+#
+# models inherit these settings automatically based on which
+# folder they live in, so no need to configure each file individually
+# ------------------------------------------------------------
+
+models:
+  instacart_project:
+
+    staging:
+      +materialized: view
+
+    intermediate:
+      +materialized: view
+
+    marts:
+      +materialized: table
