@@ -1,0 +1,76 @@
+# ============================================================
+# dbt.yml
+# CI for the dbt project without a warehouse
+#
+# What this does:
+#   - installs dbt-core and dbt-bigquery at pinned versions
+#   - writes a placeholder profiles.yml for profile 'default'
+#     (the same profile name dbt_project.yml points at)
+#   - runs dbt deps to install dbt_utils from packages.yml
+#   - runs dbt parse, which validates the project, the YAML,
+#     every ref() and source(), and compiles the Jinja
+#
+# What this does NOT do:
+#   - it never connects to BigQuery
+#   - dbt parse does not need credentials, so the oauth method
+#     and the placeholder project and dataset are never used
+#   - dbt run, dbt test and dbt docs generate still happen in
+#     dbt Cloud against the real warehouse (see README)
+#
+# Versions:
+#   dbt-core 1.9.x is pinned alongside dbt-bigquery 1.9.x so the
+#   two stay on the same major.minor line. Installing dbt-bigquery
+#   on its own pulls the newest dbt-core, which is not what was
+#   verified locally. Python 3.11 is what the parse was verified on.
+# ============================================================
+
+name: dbt parse
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  parse:
+    runs-on: ubuntu-latest
+
+    env:
+      DBT_PROFILES_DIR: ${{ github.workspace }}/.ci
+      DBT_SEND_ANONYMOUS_USAGE_STATS: "false"
+
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dbt
+        run: pip install "dbt-core==1.9.11" "dbt-bigquery==1.9.2"
+
+      - name: Write a placeholder profile
+        # profile 'default' matches the profile key in dbt_project.yml
+        # method oauth needs no key file; parse never opens a connection
+        run: |
+          mkdir -p "$DBT_PROFILES_DIR"
+          cat > "$DBT_PROFILES_DIR/profiles.yml" <<'PROFILE'
+          default:
+            target: ci
+            outputs:
+              ci:
+                type: bigquery
+                method: oauth
+                project: placeholder-project
+                dataset: placeholder_dataset
+                threads: 1
+          PROFILE
+
+      - name: Install dbt packages
+        run: dbt deps
+
+      - name: Parse the project
+        run: dbt parse
