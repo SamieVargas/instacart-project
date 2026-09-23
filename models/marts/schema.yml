@@ -53,7 +53,8 @@ models:
         tests:
           - not_null
           - accepted_values:
-              values: ['prior', 'train', 'test']
+              arguments:
+                values: ['prior', 'train', 'test']
 
       - name: order_number
         description: >
@@ -84,7 +85,8 @@ models:
           30 or more days, not exactly 30.
         tests:
           - not_null:
-              where: "order_number > 1"
+              config:
+                where: "order_number > 1"
 
       - name: is_days_since_prior_capped
         description: >
@@ -102,7 +104,8 @@ models:
           test orders have no product labels in the source data.
         tests:
           - not_null:
-              where: "eval_set != 'test'"
+              config:
+                where: "eval_set != 'test'"
 
       - name: reordered_items
         description: >
@@ -110,7 +113,8 @@ models:
           NULL for test set orders — same reason as order_size.
         tests:
           - not_null:
-              where: "eval_set != 'test'"
+              config:
+                where: "eval_set != 'test'"
 
       - name: reorder_ratio
         description: >
@@ -123,11 +127,14 @@ models:
           A value above 1.0 would indicate a join fanout upstream.
         tests:
           - not_null:
-              where: "eval_set != 'test'"
+              config:
+                where: "eval_set != 'test'"
           - dbt_utils.accepted_range:
-              min_value: 0
-              max_value: 1
-              where: "eval_set != 'test'"
+              arguments:
+                min_value: 0
+                max_value: 1
+              config:
+                where: "eval_set != 'test'"
 
 
   # ------------------------------------------------------------
@@ -200,8 +207,9 @@ models:
         tests:
           - not_null
           - dbt_utils.accepted_range:
-              min_value: 0
-              max_value: 1
+              arguments:
+                min_value: 0
+                max_value: 1
 
 
   # ------------------------------------------------------------
@@ -254,8 +262,9 @@ models:
         tests:
           - not_null
           - dbt_utils.accepted_range:
-              min_value: 0
-              max_value: 1
+              arguments:
+                min_value: 0
+                max_value: 1
 
       - name: has_capped_order
         description: >
