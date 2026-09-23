@@ -17,6 +17,12 @@ name: 'instacart_project'
 version: '1.0.0'
 config-version: 2
 
+# The schema files nest generic-test arguments under `arguments:`
+# and `where` under `config:`, which dbt reads from 1.10.5 on.
+# An older dbt fails here with a clear message instead of
+# mis-reading the tests.
+require-dbt-version: [">=1.10.5", "<3.0.0"]
+
 # profile connects dbt to BigQuery credentials
 # 'default' works in dbt Cloud since the connection is set in the UI
 profile: 'default'

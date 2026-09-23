@@ -267,7 +267,7 @@ dbt docs generate        # generates documentation and DAG
 `dbt parse` validates the project, the YAML, every `ref()` and `source()`, and compiles the Jinja without opening a connection, so it runs with no BigQuery credentials at all. This is what `.github/workflows/dbt.yml` runs on every push and pull request to `main`. To do the same locally:
 
 ```
-pip install "dbt-core==1.9.11" "dbt-bigquery==1.9.2"
+pip install "dbt-core==1.12.5" "dbt-bigquery==1.12.1"
 ```
 
 Write a `profiles.yml` for profile `default` with `method: oauth` and any placeholder `project` and `dataset` (the workflow file has the exact block), point `DBT_PROFILES_DIR` at its folder, then:
@@ -278,6 +278,8 @@ dbt parse
 ```
 
 `dbt run` and `dbt test` still need the warehouse; they run in dbt Cloud.
+
+The schema files use the current test syntax, with generic-test arguments under `arguments:` and `where` under `config:`, so the project needs dbt 1.10.5 or later; `dbt_project.yml` enforces that with `require-dbt-version`. On 1.12 the parse is clean, with no deprecation warnings, and it finds the same 61 tests with the same arguments and filters as before the syntax change.
 
 ---
 
@@ -488,7 +490,7 @@ instacart_project/
 ├── .gitignore                            # target/, dbt_packages/, logs/
 ├── dbt_project.yml                       # project name, paths, materializations per folder
 ├── package-lock.yml
-├── packages.yml                          # dbt_utils 1.3.0
+├── packages.yml                          # dbt_utils 1.4.1
 └── README.md
 ```
 

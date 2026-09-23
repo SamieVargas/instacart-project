@@ -18,8 +18,11 @@
 #     dbt Cloud against the real warehouse (see README)
 #
 # Versions:
-#   dbt-core 1.9.x is pinned alongside dbt-bigquery 1.9.x so the
-#   two stay on the same major.minor line. Installing dbt-bigquery
+#   dbt-core 1.12.x is pinned alongside dbt-bigquery 1.12.x so the
+#   two stay on the same major.minor line. The schema files nest
+#   generic-test arguments under `arguments:` and `where` under
+#   `config:`, which needs dbt 1.10.5 or later (dbt_project.yml
+#   says so in require-dbt-version). Installing dbt-bigquery
 #   on its own pulls the newest dbt-core, which is not what was
 #   verified locally. Python 3.11 is what the parse was verified on.
 # ============================================================
@@ -50,7 +53,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install dbt
-        run: pip install "dbt-core==1.9.11" "dbt-bigquery==1.9.2"
+        run: pip install "dbt-core==1.12.5" "dbt-bigquery==1.12.1"
 
       - name: Write a placeholder profile
         # profile 'default' matches the profile key in dbt_project.yml
